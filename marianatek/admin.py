@@ -2,11 +2,16 @@
 
 import os
 import json
+import logging
 
 import requests
 
 class AdminClient(object):
-    '''Base client for connecting to the Admin API.'''
+    '''Base client for connecting to the Admin API.
+
+        Model columns and data list are required for
+        upload via the datastore module.
+    '''
     def __init__(self, api_key=False, base_url=False):
         self.api_key = api_key
         if self.api_key is False:
@@ -17,6 +22,19 @@ class AdminClient(object):
             self.base_url = os.environ['MARIANA_TEK_BASE_URL']
 
         self.headers = {'Authorization': f'Bearer {self.api_key}'}
+
+        self.logger = logging.getLogger(__name__)
+
+        self.model_columns = []
+        self.data = []
+
+    def __str__(self):
+        return f"{type(self).__name__}"
+
+    def __repr__(self):
+        if self.api_key:
+            api_key = "hidden"
+        return f"{type(self).__name__}(api_key={api_key}, base_url={self.base_url})"
 
 class BillingAddresses(AdminClient):
     '''Model of aggregated billing addresses from API.'''
@@ -39,7 +57,10 @@ class BillingAddresses(AdminClient):
         ]
 
     def get_billing_addresses(self):
-        self.billing_address_results = requests.get(f'{self.base_url}/api/billing_addresses/', headers=self.headers)
+        api_call_url = f'{self.base_url}/api/billing_addresses/'
+        self.logger.info(f"Getting billing address results from {api_call_url}")
+
+        self.billing_address_results = requests.get(api_call_url, headers=self.headers)
         self.billing_address_json = json.loads(self.billing_address_results.content)
 
     def parse_billing_address_json(self):
@@ -50,13 +71,15 @@ class BillingAddresses(AdminClient):
         total_results = self.billing_address_json['meta']['pagination']['count']
         page_counter = 1
 
-        self.billing_addresses = []
-
+        self.logger.info(f"Formatting {total_results} from the billing address result.")
+        self.data = []
         while page_counter <= num_pages:
             for user_payload in self.billing_address_json['data']:
-                self.billing_addresses.append({
+                self.data.append({
                     'type': user_payload['type'],
                     'billing_address_id': user_payload['id'],
                     **user_payload['attributes']
                 })
             page_counter += 1
+
+        self.logger.info(f"Formatted {len(self.data)} entries.")

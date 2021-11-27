@@ -6,7 +6,7 @@ This SDK is geared towards data extraction and modeling rather than
 web application development. As such, some of the supported platforms
 and use cases are rather narrow.
 
-Python 3.9+ support guaranteed; Python 3.7 support likely (uses f-strings).
+Python 3.9+ support guaranteed; Python 3.6 support likely (uses f-strings).
 Python 2 is not supported by this library.
 
 Currently, the API key is auto-retrieved from the environment
