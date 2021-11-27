@@ -25,7 +25,7 @@ class AdminClient(object):
 
         self.logger = logging.getLogger(__name__)
 
-        self.model_columns = []
+        self.model_columns = {}
         self.data = []
 
     def __str__(self):
@@ -41,23 +41,25 @@ class BillingAddresses(AdminClient):
     def __init__(self):
         super().__init__()
 
-        self.model_columns = [
-            'billing_address_id',
-            'first_name',
-            'last_name',
-            'address_line1',
-            'address_line2',
-            'address_line3',
-            'city',
-            'state_province',
-            'postal_code',
-            'address_sorting_code',
-            'country',
-            'formatted_address'
-        ]
+        self.model_columns = {
+            'billing_address_id': 'int',
+            'first_name': 'varchar',
+            'last_name': 'varchar',
+            'address_line1': 'varchar',
+            'address_line2': 'varchar',
+            'address_line3': 'varchar',
+            'city': 'varchar',
+            'state_province': 'varchar',
+            'postal_code': 'varchar',
+            'address_sorting_code': 'varchar',
+            'country': 'varchar',
+            'formatted_address': 'json'
+        }
 
-    def get_billing_addresses(self):
-        api_call_url = f'{self.base_url}/api/billing_addresses/'
+    def get_billing_addresses(self, page:int=False):
+        api_call_url = f'{self.base_url}/api/billing_addresses/?page_size=100'
+        if page:
+            api_call_url = f'{api_call_url}&page={page}'
         self.logger.info(f"Getting billing address results from {api_call_url}")
 
         self.billing_address_results = requests.get(api_call_url, headers=self.headers)
@@ -81,5 +83,6 @@ class BillingAddresses(AdminClient):
                     **user_payload['attributes']
                 })
             page_counter += 1
+            self.get_billing_addresses(page=page_counter)
 
         self.logger.info(f"Formatted {len(self.data)} entries.")

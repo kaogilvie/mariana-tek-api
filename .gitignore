@@ -1,3 +1,4 @@
 mariana-tek-venv
 *.pyc
 *.pyo
+ignore.py

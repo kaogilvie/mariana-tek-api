@@ -1,6 +1,7 @@
 '''Configurable interface to a datastore.'''
 
 import logging
+import json
 
 import psycopg2
 
@@ -8,6 +9,9 @@ class Database(object):
     '''Generic database connector for any interface that implements DB-API standards.'''
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+
+        # override to convert generic API types to specific database types
+        self.type_conversion_dict = {}
 
     def stage_object(self, target: object, target_table=False):
         if target_table is False:
@@ -20,10 +24,12 @@ class Database(object):
         self.logger.info(f"Trimming out columns not in {target}.model_columns. Starting with {len(target.data[0].keys())} columns...")
         target.formatted_data = []
         for entry in target.data:
-            formatted_dict = {col: entry[col] for col in target.model_columns if col in entry}
+            formatted_dict = {col: entry[col] for col in list(target.model_columns.keys()) if col in entry}
             target.formatted_data.append(formatted_dict)
         self.logger.info(f"""Ended with {len(target.formatted_data[0].keys())} columns. Trimmed the following columns out:
                             {set(target.data[0].keys()) - set(target.formatted_data[0].keys())}""")
+
+        self.target = target
 
     def open_connection(self, creds: dict, connection_name=''):
         raise NotImplementedError("Implement the open_connection method on a per-connector basis.")
@@ -44,7 +50,6 @@ class Postgres(Database):
         super().__init__()
 
     def open_connection(self, creds: dict):
-        self.logger.info(list(creds.keys()))
         if not set(['dbname', 'user', 'password', 'host', 'port']).issubset(set(creds.keys())):
             raise AttributeError("Required basic params for postgres connection not included in creds dict.")
         self.cxn = psycopg2.connect(**creds)
@@ -68,5 +73,74 @@ class Postgres(Database):
             self.cursor = self.cxn.cursor()
         self.logger.info("Cursor retrieved.")
 
-    def upsert_object(self, target_table, primary_key_list):
-        pass
+    def create_object(self, target_table: str, schema: str, primary_key_list: list):
+        if not hasattr(self, 'target'):
+            raise AttributeError("Target object not staged within Database object. Run stage_object first.")
+
+        # override datatypes here if needed
+        if len(self.type_conversion_dict) > 0:
+            raise NotImplementedError("Type conversion not yet implemented for Postgres!")
+
+        create_if_not_exists = f'''CREATE TABLE IF NOT EXISTS {schema}.{target_table} ('''
+        for column, type in self.target.model_columns.items():
+            col_string = f"{column} {type}"
+            create_if_not_exists = f"{create_if_not_exists}\n{col_string},"
+
+        if len(primary_key_list) > 0:
+            create_if_not_exists = f"{create_if_not_exists}\nPRIMARY KEY ("
+            for primary_key in primary_key_list:
+                create_if_not_exists = f"{create_if_not_exists}{primary_key}, "
+            create_if_not_exists = f"{create_if_not_exists[:-2]})\n)"
+        else:
+            create_if_not_exists = f"{create_if_not_exists[:-1]})"
+
+        self.logger.info(f"Creating table using the following SQL: {create_if_not_exists}")
+        self.cursor.execute(create_if_not_exists)
+        self.cxn.commit()
+        self.logger.info("Created.")
+
+    def drop_object(self, target_table, schema):
+        if not hasattr(self, 'target'):
+            raise AttributeError("Target object not staged within Database object. Run stage_object first.")
+
+        drop_table = f"DROP TABLE {schema}.{target_table}"
+        self.cursor.execute(drop_table)
+        self.cxn.commit()
+        self.logger.info(f"Table {schema}.{target_table} dropped.")
+
+    def upsert_object(self, target_table, schema, primary_key_list):
+        '''Convenience wrapper to perform checks, drops and upserts as needed.'''
+        self.create_object(target_table, schema, primary_key_list)
+
+        col_string = ""
+        for key in self.target.model_columns.keys():
+            col_string = f"{col_string}{key},"
+        col_string = col_string[:-1]
+
+        upsert_sql = f"""INSERT INTO {schema}.{target_table}({col_string}) VALUES\n"""
+        for row_dict in self.target.formatted_data:
+            row_string = "("
+            for col, type in self.target.model_columns.items():
+                if type in ['json']:
+                    row_dict[col] = json.dumps(row_dict[col])
+                row_string = f"""{row_string}'{row_dict[col]}',"""
+            row_string = f"{row_string[:-1]})"
+            upsert_sql = f"{upsert_sql}{row_string},"
+        upsert_sql = f"{upsert_sql[:-1]} ON CONFLICT ("
+        for primary_key in primary_key_list:
+            upsert_sql = f"{upsert_sql}{primary_key},"
+        upsert_sql = f"{upsert_sql[:-1]})\n DO\n UPDATE SET\n"
+        for col in self.target.model_columns.keys():
+            if col in primary_key_list:
+                continue
+            upsert_sql = f"{upsert_sql} {col} = EXCLUDED.{col},"
+        upsert_sql = f"{upsert_sql[:-1]};"
+
+        self.logger.info(f"Using this SQL to upsert: {upsert_sql}")
+        self.cursor.execute(upsert_sql)
+        self.cxn.commit()
+
+    def recreate_object(self, target_table, schema, primary_key_list):
+        '''Convenience wrapper for drop and create methods.'''
+        self.drop_object(target_table, schema)
+        self.create_object(target_table, schema, primary_key_list)

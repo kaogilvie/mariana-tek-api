@@ -9,6 +9,10 @@ and use cases are rather narrow.
 Python 3.9+ support guaranteed; Python 3.6 support likely (uses f-strings).
 Python 2 is not supported by this library.
 
+Postgres support baked in for the datastore functionality but extending
+for other datastores should just involve creating a new subclass in the same style.
+Only Postgres 9.5 and up is supported (leverages ON CONFLICT).
+
 Currently, the API key is auto-retrieved from the environment
 variable "MARIANA_TEK_API_KEY", but you can override this by passing
 an API key to the constructor argument.
