@@ -123,7 +123,10 @@ class Postgres(Database):
             for col, type in self.target.model_columns.items():
                 if type in ['json']:
                     row_dict[col] = json.dumps(row_dict[col])
-                row_string = f"""{row_string}'{row_dict[col]}',"""
+                if row_dict[col] is None:
+                    row_string = f"""{row_string}NULL,"""
+                else:
+                    row_string = f"""{row_string}'{row_dict[col]}',"""
             row_string = f"{row_string[:-1]})"
             upsert_sql = f"{upsert_sql}{row_string},"
         upsert_sql = f"{upsert_sql[:-1]} ON CONFLICT ("
