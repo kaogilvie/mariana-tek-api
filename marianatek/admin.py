@@ -38,8 +38,8 @@ class AdminClient(object):
             api_key = "hidden"
         return f"{type(self).__name__}(api_key={api_key}, base_url={self.base_url})"
 
-    def get(self, page=False):
-        api_call_url = f'{self.base_url}/api/{self.api_object}/?page_size=100'
+    def get(self, page=False, page_size=100):
+        api_call_url = f'{self.base_url}/api/{self.api_object}/?page_size={page_size}'
         if page:
             api_call_url = f'{api_call_url}&page={page}'
         self.logger.info(f"Getting {self.api_object} results from {api_call_url}")
@@ -89,7 +89,7 @@ class BillingAddresses(AdminClient):
             'formatted_address': 'json'
         }
 
-    def parse(self):
+    def parse(self, page_size=100):
         self.prep_parse()
         while self.page_counter <= self.num_pages:
             page_payload = getattr(self, f"{self.api_object}_json")
@@ -101,7 +101,7 @@ class BillingAddresses(AdminClient):
                 })
             self.page_counter += 1
 
-            self.get(page=self.page_counter)
+            self.get(page=self.page_counter, page_size=page_size)
 
         self.logger.info(f"Formatted {len(self.data)} entries.")
 
@@ -122,7 +122,7 @@ class ClassSessions(AdminClient):
         }
         self.api_object = 'class_sessions'
 
-    def parse(self):
+    def parse(self, page_size=100):
         ### should be able to make this completely generic
         self.prep_parse()
         while self.page_counter <= self.num_pages:
@@ -137,7 +137,7 @@ class ClassSessions(AdminClient):
                 self.data.append(self.convert_none_strings(dictionary_to_append))
 
             self.page_counter += 1
-            self.get(page=self.page_counter)
+            self.get(page=self.page_counter, page_size=page_size)
 
         self.logger.info(f"Formatted {len(self.data)} entries.")
 
@@ -146,22 +146,31 @@ class Reservations(AdminClient):
         super().__init__()
 
         self.model_columns = {
-            'formatted_address': 'json'
+            'reservation_id': 'int',
+            'cancel_date': 'date',
+            'check_in_date': 'date',
+            'guest_name': 'varchar',
+            'status': 'varchar',
+            'class_session': 'int',
         }
         self.api_object = 'reservations'
 
-    def parse(self):
+    def parse(self, page_size=100):
+        ### should be able to make this completely generic
         self.prep_parse()
-        page_payload = getattr(self, f"{self.api_object}_json")
         while self.page_counter <= self.num_pages:
+            page_payload = getattr(self, f"{self.api_object}_json")
             for entry_dict in page_payload['data']:
-                self.data.append({
+                dictionary_to_append = {
                     'type': entry_dict['type'],
-                    'billing_address_id': entry_dict['id'],
-                    **entry_dict['attributes']
-                })
+                    'reservation_id': entry_dict['id'],
+                    **entry_dict['attributes'],
+                    'class_session': entry_dict['relationships']['class_session']['data']['id']
+                }
+                self.data.append(self.convert_none_strings(dictionary_to_append))
+
             self.page_counter += 1
-            self.get(page=self.page_counter)
+            self.get(page=self.page_counter, page_size=page_size)
 
         self.logger.info(f"Formatted {len(self.data)} entries.")
 
