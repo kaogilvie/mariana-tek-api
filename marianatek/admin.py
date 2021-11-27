@@ -173,9 +173,3 @@ class Reservations(AdminClient):
             self.get(page=self.page_counter, page_size=page_size)
 
         self.logger.info(f"Formatted {len(self.data)} entries.")
-
-# ba = ClassSessions()
-# ba.get()
-# ba.parse()
-#
-# ba.data[0].keys()
