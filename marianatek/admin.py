@@ -39,6 +39,10 @@ class AdminClient(object):
         return f"{type(self).__name__}(api_key={api_key}, base_url={self.base_url})"
 
     def get(self, page=False, page_size=100):
+        '''
+        HTTP call to an API endpoint that results in dynamic setting of the
+        result variables to be named after the object being queried.
+        '''
         api_call_url = f'{self.base_url}/api/{self.api_object}/?page_size={page_size}'
         if page:
             api_call_url = f'{api_call_url}&page={page}'
@@ -49,8 +53,11 @@ class AdminClient(object):
         setattr(self, f'{self.api_object}_json', json.loads(response.content))
 
     def prep_parse(self):
+        '''
+        Sets up the necessary data structures to being parsing the payload.
+        '''
         if not hasattr(self, f"{self.api_object}_json"):
-            raise AttributeError(f"{self.api_object}_json attribute has not been initialized. Try calling the get_class_sessions method first.")
+            raise AttributeError(f"{self.api_object}_json attribute has not been initialized. Try calling the get method first.")
 
         json_dict = getattr(self, f"{self.api_object}_json")
 
@@ -61,18 +68,52 @@ class AdminClient(object):
         self.logger.info(f"Formatting {self.total_results} from the {self.api_object} result.")
         self.data = []
 
-    def convert_none_strings(self, dictionary):
-        for key, value in dictionary.items():
-            if value == 'None':
-                dictionary['key'] = None
-        return dictionary
+    def create_relationship_dictionary(self, single_instance_payload):
+        '''Flattens relationship portion of payload into key and arrays.
+        Does NOT preserve the "type" part of the relationship data structure.
+        '''
+        flattened_dict = {}
+        relationships = single_instance_payload['relationships']
+        for key, rel_data in relationships.items():
+            if rel_data['data'] is None:
+                flattened_dict[key] = None
+                continue
+            if type(rel_data['data']) is dict:
+                flattened_dict[key] = rel_data['data']['id']
+            if (type(rel_data['data']) is list) & (len(rel_data['data']) > 0):
+                rel_data_list = []
+                for entry in rel_data['data']:
+                    rel_data_list.append(entry['id'])
+                flattened_dict[key] = rel_data_list
+        return flattened_dict
+
+    def parse(self, page_size=100):
+        '''Retrieve results from API call and formats them.
+           Collapses relationships into a flattened dictionary.'''
+        self.get(page_size=page_size)
+
+        self.prep_parse()
+
+        while self.page_counter <= self.num_pages:
+            page_payload = getattr(self, f"{self.api_object}_json")
+            for entry_dict in page_payload['data']:
+                rel_dictionary = self.create_relationship_dictionary(entry_dict)
+                self.data.append({
+                    'type': entry_dict['type'],
+                    f'{self.api_object}_id': entry_dict['id'],
+                    **entry_dict['attributes'],
+                    **rel_dictionary
+                })
+
+            self.page_counter += 1
+            self.get(page=self.page_counter, page_size=page_size)
+
+        self.logger.info(f"Formatted {len(self.data)} entries.")
 
 class BillingAddresses(AdminClient):
     '''Model of aggregated billing addresses from API.'''
     def __init__(self):
         super().__init__()
-
-        self.api_object = 'billing_addresses'
 
         self.model_columns = {
             'billing_address_id': 'integer',
@@ -88,24 +129,10 @@ class BillingAddresses(AdminClient):
             'country': 'varchar',
             'formatted_address': 'text[]'
         }
-
-    def parse(self, page_size=100):
-        self.prep_parse()
-        while self.page_counter <= self.num_pages:
-            page_payload = getattr(self, f"{self.api_object}_json")
-            for entry_dict in page_payload['data']:
-                self.data.append({
-                    'type': entry_dict['type'],
-                    'billing_address_id': entry_dict['id'],
-                    **entry_dict['attributes']
-                })
-            self.page_counter += 1
-
-            self.get(page=self.page_counter, page_size=page_size)
-
-        self.logger.info(f"Formatted {len(self.data)} entries.")
+        self.api_object = 'billing_addresses'
 
 class ClassSessions(AdminClient):
+    '''Model of class sessions from API.'''
     def __init__(self):
         super().__init__()
 
@@ -116,32 +143,14 @@ class ClassSessions(AdminClient):
             'end_datetime': 'timestamp',
             'capacity': 'int',
             'cancellation_datetime': 'timestamp',
-            'instructor_names': 'json',
+            'instructor_names': 'text[]',
             'public_waitlist_count': 'int',
-            'reservations': 'json'
+            'reservations': 'text[]'
         }
         self.api_object = 'class_sessions'
 
-    def parse(self, page_size=100):
-        ### should be able to make this completely generic
-        self.prep_parse()
-        while self.page_counter <= self.num_pages:
-            page_payload = getattr(self, f"{self.api_object}_json")
-            for entry_dict in page_payload['data']:
-                dictionary_to_append = {
-                    'type': entry_dict['type'],
-                    'class_session_id': entry_dict['id'],
-                    **entry_dict['attributes'],
-                    'reservations': [k['id'] for k in entry_dict['relationships']['reservations']['data']]
-                }
-                self.data.append(self.convert_none_strings(dictionary_to_append))
-
-            self.page_counter += 1
-            self.get(page=self.page_counter, page_size=page_size)
-
-        self.logger.info(f"Formatted {len(self.data)} entries.")
-
 class Reservations(AdminClient):
+    '''Model of reservation data from API.'''
     def __init__(self):
         super().__init__()
 
@@ -154,22 +163,3 @@ class Reservations(AdminClient):
             'class_session': 'int',
         }
         self.api_object = 'reservations'
-
-    def parse(self, page_size=100):
-        ### should be able to make this completely generic
-        self.prep_parse()
-        while self.page_counter <= self.num_pages:
-            page_payload = getattr(self, f"{self.api_object}_json")
-            for entry_dict in page_payload['data']:
-                dictionary_to_append = {
-                    'type': entry_dict['type'],
-                    'reservation_id': entry_dict['id'],
-                    **entry_dict['attributes'],
-                    'class_session': entry_dict['relationships']['class_session']['data']['id']
-                }
-                self.data.append(self.convert_none_strings(dictionary_to_append))
-
-            self.page_counter += 1
-            self.get(page=self.page_counter, page_size=page_size)
-
-        self.logger.info(f"Formatted {len(self.data)} entries.")
