@@ -106,7 +106,7 @@ class Postgres(Database):
         if not hasattr(self, 'target'):
             raise AttributeError("Target object not staged within Database object. Run stage_object first.")
 
-        drop_table = f"DROP TABLE {schema}.{target_table}"
+        drop_table = sql.SQL("DROP TABLE {schema}.{target_table}").format(schema=sql.Identifier(schema),target_table=sql.Identifier(target_table))
         self.cursor.execute(drop_table)
         self.cxn.commit()
         self.logger.info(f"Table {schema}.{target_table} dropped.")
