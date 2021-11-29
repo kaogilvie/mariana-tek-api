@@ -4,6 +4,8 @@ import logging
 import json
 
 import psycopg2
+from psycopg2 import sql
+from psycopg2.extras import execute_values
 
 class Database(object):
     '''Generic database connector for any interface that implements DB-API standards.'''
@@ -81,6 +83,7 @@ class Postgres(Database):
         if len(self.type_conversion_dict) > 0:
             raise NotImplementedError("Type conversion not yet implemented for Postgres!")
 
+        ## this is safe since it is all serverside definitions (it's not dynamic)
         create_if_not_exists = f'''CREATE TABLE IF NOT EXISTS {schema}.{target_table} ('''
         for column, type in self.target.model_columns.items():
             col_string = f"{column} {type}"
@@ -112,35 +115,34 @@ class Postgres(Database):
         '''Convenience wrapper to perform checks, drops and upserts as needed.'''
         self.create_object(target_table, schema, primary_key_list)
 
-        col_string = ""
-        for key in self.target.model_columns.keys():
-            col_string = f"{col_string}{key},"
-        col_string = col_string[:-1]
+        upsert_sql = sql.SQL("""INSERT INTO {schema}.{target_table}
+        ({col_string})
+        VALUES {val_string}
+        ON CONFLICT ({primary_keys})
+        DO
+        UPDATE SET {update_cols}
+        """).format(
+                    schema = sql.Identifier(schema),
+                    target_table = sql.Identifier(target_table),
+                    col_string = sql.SQL(',').join([
+                        sql.Identifier(field) for field in self.target.model_columns.keys()
+                    ]),
+                    val_string = sql.Placeholder(),
+                    primary_keys = sql.SQL(',').join([
+                        sql.Identifier(pk) for pk in primary_key_list
+                    ]),
+                    update_cols = sql.SQL(',').join([
+                        (sql.SQL("{field} = EXCLUDED.{field}").format(field = sql.Identifier(field))) for field in self.target.model_columns if field not in primary_key_list
+                    ])
+                   )
 
-        upsert_sql = f"""INSERT INTO {schema}.{target_table}({col_string}) VALUES\n"""
-        for row_dict in self.target.formatted_data:
-            row_string = "("
-            for col, type in self.target.model_columns.items():
-                if type in ['json']:
-                    row_dict[col] = json.dumps(row_dict[col])
-                if row_dict[col] is None:
-                    row_string = f"""{row_string}NULL,"""
-                else:
-                    row_string = f"""{row_string}'{row_dict[col]}',"""
-            row_string = f"{row_string[:-1]})"
-            upsert_sql = f"{upsert_sql}{row_string},"
-        upsert_sql = f"{upsert_sql[:-1]} ON CONFLICT ("
-        for primary_key in primary_key_list:
-            upsert_sql = f"{upsert_sql}{primary_key},"
-        upsert_sql = f"{upsert_sql[:-1]})\n DO\n UPDATE SET\n"
-        for col in self.target.model_columns.keys():
-            if col in primary_key_list:
-                continue
-            upsert_sql = f"{upsert_sql} {col} = EXCLUDED.{col},"
-        upsert_sql = f"{upsert_sql[:-1]};"
-
-        self.logger.info(f"Using this SQL to upsert: {upsert_sql}")
-        self.cursor.execute(upsert_sql)
+        self.logger.info(f"Using this SQL to upsert: {upsert_sql.as_string(self.cursor)}")
+        execute_values(
+            self.cursor,
+            upsert_sql,
+            self.target.formatted_data,
+            sql.SQL("({arglist})").format(arglist=sql.SQL(',').join([sql.Placeholder(col) for col in self.target.model_columns.keys()]))
+        )
         self.cxn.commit()
 
     def recreate_object(self, target_table, schema, primary_key_list):

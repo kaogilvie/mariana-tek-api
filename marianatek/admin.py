@@ -86,7 +86,7 @@ class BillingAddresses(AdminClient):
             'postal_code': 'varchar',
             'address_sorting_code': 'varchar',
             'country': 'varchar',
-            'formatted_address': 'json'
+            'formatted_address': 'text[]'
         }
 
     def parse(self, page_size=100):
