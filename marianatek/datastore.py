@@ -83,21 +83,24 @@ class Postgres(Database):
         if len(self.type_conversion_dict) > 0:
             raise NotImplementedError("Type conversion not yet implemented for Postgres!")
 
-        ## this is safe since it is all serverside definitions (it's not dynamic)
-        create_if_not_exists = f'''CREATE TABLE IF NOT EXISTS {schema}.{target_table} ('''
-        for column, type in self.target.model_columns.items():
-            col_string = f"{column} {type}"
-            create_if_not_exists = f"{create_if_not_exists}\n{col_string},"
-
+        columns = sql.SQL("{columns}").format(
+            columns = sql.SQL(",").join([
+                    (sql.SQL("{col} {type}").format(col = sql.Identifier(col), type = sql.SQL(type))) for col, type in self.target.model_columns.items()
+                ])
+            )
         if len(primary_key_list) > 0:
-            create_if_not_exists = f"{create_if_not_exists}\nPRIMARY KEY ("
-            for primary_key in primary_key_list:
-                create_if_not_exists = f"{create_if_not_exists}{primary_key}, "
-            create_if_not_exists = f"{create_if_not_exists[:-2]})\n)"
-        else:
-            create_if_not_exists = f"{create_if_not_exists[:-1]})"
-
-        self.logger.info(f"Creating table using the following SQL: {create_if_not_exists}")
+            columns = sql.SQL("{columns}, PRIMARY KEY ({pk_list})").format(
+                columns = columns,
+                pk_list = sql.SQL(',').join([
+                    sql.Identifier(pk) for pk in primary_key_list
+                ])
+            )
+        create_if_not_exists = sql.SQL("CREATE TABLE IF NOT EXISTS {schema}.{target_table} ({columns})").format(
+            schema = sql.Identifier(schema),
+            target_table = sql.Identifier(target_table),
+            columns = columns
+        )
+        self.logger.info(f"Creating table using the following SQL: {create_if_not_exists.as_string(self.cursor)}")
         self.cursor.execute(create_if_not_exists)
         self.cxn.commit()
         self.logger.info("Created.")

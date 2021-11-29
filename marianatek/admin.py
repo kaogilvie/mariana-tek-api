@@ -75,7 +75,7 @@ class BillingAddresses(AdminClient):
         self.api_object = 'billing_addresses'
 
         self.model_columns = {
-            'billing_address_id': 'int',
+            'billing_address_id': 'integer',
             'first_name': 'varchar',
             'last_name': 'varchar',
             'address_line1': 'varchar',
