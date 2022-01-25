@@ -98,17 +98,39 @@ class AdminClient(object):
             page_payload = getattr(self, f"{self.api_object}_json")
             for entry_dict in page_payload['data']:
                 rel_dictionary = self.create_relationship_dictionary(entry_dict)
-                self.data.append({
+
+                formatted_dict = {
                     'type': entry_dict['type'],
-                    f'{self.api_object}_id': entry_dict['id'],
+                    f'{self.api_object_singular}_id': entry_dict['id'],
                     **entry_dict['attributes'],
                     **rel_dictionary
-                })
+                }
+
+                # handle that MT doesn't return keys for relationship arrays that are null
+                for field in self.model_columns.keys():
+                    if field not in formatted_dict.keys():
+                        formatted_dict[field] = None
+
+                self.data.append(formatted_dict)
 
             self.page_counter += 1
             self.get(page=self.page_counter, page_size=page_size)
 
         self.logger.info(f"Formatted {len(self.data)} entries.")
+
+
+class Bankcards(AdminClient):
+    '''Model of reservation data from API.'''
+    def __init__(self):
+        super().__init__()
+
+        self.model_columns = {
+            'bankcard_id': 'int',
+            'billing_address': 'int',
+            'user': 'int'
+        }
+        self.api_object = 'bankcards'
+        self.api_object_singular = 'bankcard'
 
 class BillingAddresses(AdminClient):
     '''Model of aggregated billing addresses from API.'''
@@ -130,6 +152,7 @@ class BillingAddresses(AdminClient):
             'formatted_address': 'text[]'
         }
         self.api_object = 'billing_addresses'
+        self.api_object_singular = 'billing_address'
 
 class ClassSessions(AdminClient):
     '''Model of class sessions from API.'''
@@ -148,6 +171,7 @@ class ClassSessions(AdminClient):
             'reservations': 'text[]'
         }
         self.api_object = 'class_sessions'
+        self.api_object_singular = 'class_session'
 
 class Reservations(AdminClient):
     '''Model of reservation data from API.'''
@@ -158,8 +182,29 @@ class Reservations(AdminClient):
             'reservation_id': 'int',
             'cancel_date': 'date',
             'check_in_date': 'date',
+            'user': 'varchar',
             'guest_name': 'varchar',
             'status': 'varchar',
             'class_session': 'int',
         }
         self.api_object = 'reservations'
+        self.api_object_singular = 'reservation'
+
+class Users(AdminClient):
+    '''Model of anonymized user addresses from API.'''
+    def __init__(self):
+        super().__init__()
+
+        self.model_columns = {
+            'user_id': 'integer',
+            'address_line1': 'varchar',
+            'address_line2': 'varchar',
+            'address_line3': 'varchar',
+            'city': 'varchar',
+            'state_province': 'varchar',
+            'postal_code': 'varchar',
+            'address_sorting_code': 'varchar',
+            'country': 'varchar',
+        }
+        self.api_object = 'users'
+        self.api_object_singular = 'user'
