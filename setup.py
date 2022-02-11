@@ -2,13 +2,11 @@ from setuptools import setup, find_packages
 from marianatek import __version__
 
 setup(name='marianatek',
-      description='&KO is going big and extracting data from -- MARAIANA TEK',
+      description='&KO is going big and extracting data from -- MARIANA TEK',
       author='Kyle Ogilvie',
       author_email='kyle@kyleogilve.com',
       url='https://www.kyleogilvie.com/',
-      packages=find_packages(
-        where='marianatek'
-      ),
+      packages=find_packages(),
       version=__version__,
       install_requires=[
         "certifi==2021.10.8",

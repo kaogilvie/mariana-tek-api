@@ -1,6 +1,7 @@
 mariana-tek-venv
 *.pyc
 *.pyo
+__pycache__
 ignore.py
 .DS_Store
 *.egg-info
