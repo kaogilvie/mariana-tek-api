@@ -3,3 +3,4 @@ mariana-tek-venv
 *.pyo
 ignore.py
 .DS_Store
+*.egg-info
