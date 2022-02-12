@@ -138,7 +138,7 @@ class BillingAddresses(AdminClient):
         super().__init__()
 
         self.model_columns = {
-            'billing_address_id': 'integer',
+            'billing_address_id': 'int',
             'first_name': 'varchar',
             'last_name': 'varchar',
             'address_line1': 'varchar',
@@ -180,8 +180,8 @@ class Reservations(AdminClient):
 
         self.model_columns = {
             'reservation_id': 'int',
-            'cancel_date': 'date',
-            'check_in_date': 'date',
+            'cancel_date': 'timestamp',
+            'check_in_date': 'timestamp',
             'user': 'varchar',
             'guest_name': 'varchar',
             'status': 'varchar',
@@ -196,7 +196,7 @@ class Users(AdminClient):
         super().__init__()
 
         self.model_columns = {
-            'user_id': 'integer',
+            'user_id': 'int',
             'address_line1': 'varchar',
             'address_line2': 'varchar',
             'address_line3': 'varchar',
