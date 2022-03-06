@@ -161,6 +161,7 @@ class ClassSessions(AdminClient):
 
         self.model_columns = {
             'class_session_id': 'int',
+            'start_date': 'date',
             'start_datetime': 'timestamp',
             'end_datetime': 'timestamp',
             'capacity': 'int',
